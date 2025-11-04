@@ -134,7 +134,7 @@ def main(in_dir, out_dir, run_num):
 
         # Save extracted variables in an HDF5 file
         with h5py.File(f"{out_dir}/variable_{count}.h5", "w") as hf:
-            for i in range(10):
+            for i in range(26):
                 dataset = hf.create_dataset(f"var{i}", data=var[i])
                 dataset.attrs["label"] = labels[i]
 
