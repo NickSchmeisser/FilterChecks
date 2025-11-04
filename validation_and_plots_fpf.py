@@ -7,6 +7,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 plt.style.use('tableau-colorblind10')
 import warnings
+from scipy.stats import kstest, poisson
 """
 %run plotting_fpf_mf.py \
   -i "/data/user/tstuerwald/TFT/24/testrun/fpf_dev9" \
@@ -23,7 +24,7 @@ labels_fpf = np.array([
 def load_combined_data(base_path):
     years_combined = []
     years_labels = []
-    years = [ f.name for f in os.scandir(base_path) if f.is_dir() ]
+    years = [ f.name for f in os.scandir(base_path) if (f.is_dir() and (f.name)[0]!='.') ]
     num_vars = 10
 
     for j in range(len(years)):
@@ -51,11 +52,31 @@ def load_combined_data(base_path):
 
     return years_combined, years_labels, years
 
-def stattests(combined_years, combined_ref, labels, years, output_dir):
+def KS_tests(combined_years, combined_ref, labels, years, output_dir):
     for i, var_name in enumerate(labels):
+        p_values = [[],[],[]] #Label/variable, Year, p_value
         var_ref = combined_ref[i]
         for j in range(len(combined_years)):
             var_main = combined_years[j][i]
+            p_values[0].append(var_name)
+            p_values[1].append(years[j])
+            pvalue = kstest(var_ref,var_main).pvalue
+            p_values[2].append(pvalue)
+        #Plotting p_values for variable
+        fig = plt.figure(figsize=(7, 3.5))
+        ax0=plt.subplot2grid((1,1), (0, 0))
+        print(p_values[1])
+        print(p_values[0])
+        ax0.plot([int(i) for i in p_values[1]],p_values[2],linestyle='None',markersize=7, marker='.')
+        ax0.set_xlabel("Years", fontsize=15)
+        ax0.set_ylabel("p_value", fontsize=15)
+        ax0.set_title(var_name, fontsize=15)
+        ax0.grid(True, linewidth=0.5)
+        ax0.set_yscale("log")
+        fig.tight_layout()
+        fig.savefig(os.path.join(output_dir, f"{var_name}_pvalues.png"), bbox_inches='tight')
+        plt.close(fig)
+            
 
 def plot_distributions(combined_years, combined_ref, labels, years, output_dir, normalize=False):
     os.makedirs(output_dir, exist_ok=True)
@@ -178,6 +199,14 @@ def main():
         years,
         args.plot_dir,
         normalize=args.normalize
+    )
+    print("Performing KS_tests...")
+    KS_tests(
+        combined_years,
+        combined_years_ref[0],
+        labels_years[0],
+        years,
+        args.plot_dir
     )
 
     print(f"Done! Plots saved to: {args.plot_dir}")
