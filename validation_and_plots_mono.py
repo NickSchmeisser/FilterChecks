@@ -9,31 +9,26 @@ plt.style.use('tableau-colorblind10')
 import warnings
 from scipy.stats import kstest, poisson
 
-reference_path = "/data/user/nschmeisser/TFT/Pass3_automation/processed/2018/fpf/130755/"
+reference_path = "/data/user/nschmeisser/TFT/25/2025/mono/0613"
 """
-%run plotting_fpf_mf.py \
-  -i "/data/user/tstuerwald/TFT/24/testrun/fpf_dev9" \
-  -ir "/data/user/tstuerwald/TFT/24/testrun/reference/fpf" \
+%run plotting_mono_mf.py \
+  -i "/data/user/tstuerwald/TFT/24/testrun/mono_dev9" \
+  -ir "/data/user/tstuerwald/TFT/24/testrun/reference/mono" \
   -o"/data/user/tstuerwald/TFT/24/testrun/test"\
   -n 
 """
-labels_fpf = np.array([
-    "#Launches", "#Doubles", "#Azimuth", "#Zenith", 
-    "SLC fraction", "Trigger length [ns]", "LineFit zenith [rad]",
-    "LineFit azimuth [rad]", "MPE fit zenith[rad]", "MPE fit azimuth[rad]"
-])  
 
 def load_combined_data(base_path):
     years_combined = []
     years_labels = []
     years = [ f.name for f in os.scandir(base_path) if (f.is_dir() and (f.name)[0]!='.') ]
-    num_vars = 10
+    num_vars = 26
 
     for j in range(len(years)):
         combined = []
         labels = [None] * num_vars
         for i in range(num_vars):
-            runs = [ f.path for f in os.scandir(str(base_path)+str(years[j])+"/fpf/") if f.is_dir() ]
+            runs = [ f.path for f in os.scandir(str(base_path)+str(years[j])+"/mono/") if f.is_dir() ]
             temp_list = []
             for run in runs:
                 file_path = os.path.join(run, "combined_data.h5")
@@ -82,13 +77,13 @@ def KS_tests(combined_years, combined_ref, labels, years, output_dir):
 def KS_tests_single(base_path, ref_path, output_dir):
     ref_file = h5py.File(os.path.join(ref_path, "combined_data.h5"), 'r')
     years = [ f.name for f in os.scandir(base_path) if (f.is_dir() and (f.name)[0]!='.') ]
-    num_vars = 10
+    num_vars = 26
     labels = [None] * num_vars
     for i in range(num_vars):
         p_values = [[],[]] #Years, p_values
         for j in range(len(years)):
             ref_value = ref_file[f'var{i}'][:]
-            runs = [ f.path for f in os.scandir(str(base_path)+str(years[j])+"/fpf/") if f.is_dir() ]
+            runs = [ f.path for f in os.scandir(str(base_path)+str(years[j])+"/mono/") if f.is_dir() ]
             for run in runs:
                 file_path = os.path.join(run, "combined_data.h5")
                 with h5py.File(file_path, 'r') as hf:
@@ -230,7 +225,7 @@ def main():
     parser.add_argument('-ir', '--ref_base', required=True, help='Path to reference data folder')
     #parser.add_argument('-d', '--main_dates', nargs='+', required=True, help='Dates for main data')
     #parser.add_argument('-dr', '--ref_dates', nargs='+', required=True, help='Dates for reference data')
-    #parser.add_argument('-v', '--num_vars', type=int, help='Number of variables (26 for MF, 10 for FPF)')
+    #parser.add_argument('-v', '--num_vars', type=int, help='Number of variables (26 for MF, 10 for mono)')
     parser.add_argument('-o', '--plot_dir', type=str, help='Output directory for plots')
     #parser.add_argument('-l', '--main_label', type=str, help='Legend label for main dataset')
     #parser.add_argument('-lr', '--ref_label', type=str, help='Legend label for reference dataset')
@@ -245,7 +240,7 @@ def main():
     '''
     if labels_main != labels_ref:
         print("Warning: Labels mismatch between datasets!")
-    #Use FPF labels in case FPF data are plotted
+    #Use mono labels in case mono data are plotted
     '''
     print("Plotting distributions...")
     plot_distributions(
@@ -265,7 +260,7 @@ def main():
         years,
         args.plot_dir
     )
-    
+
     KS_tests_single(args.main_base, reference_path, args.plot_dir)
 
     print(f"Done! Plots saved to: {args.plot_dir}")
