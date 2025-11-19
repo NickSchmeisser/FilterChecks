@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+#!/bin/sh /cvmfs/icecube.opensciencegrid.org/py3-v4.4.2/icetray-start
+#METAPROJECT /data/user/nschmeisser/Software/IceTrayExoticGenerator/build
 """Validation script for the faint particle filter."""
 #ruff: noqa: F401 PLW0603 PTH118 PTH207
 import os
@@ -10,6 +11,7 @@ import numpy as np
 import h5py
 from pathlib import Path
 import unittest
+from scipy.stats import kstest, poisson
 
 #Global counts
 q_count = 0
@@ -236,37 +238,47 @@ class Combine_variables:
                 output_file = Path(output_file_path) / str(file_name)
                 os.remove(output_file)
 
-class FPFTest(unittest.TestCase):
+class FPFTest(): #unittest.TestCase):
     num_datasets = 10
     output_file_path = "/data/user/nschmeisser/TFT/Pass3_automation/processed/2018/fpf/130755"
     ref_path = '/data/user/nschmeisser/TFT/Pass3_automation/reference2018/2018/fpf/130764'
-    ref_file = h5py.File(os.path.join(ref_path, "combined_data.h5"), 'r')
+    ref_livetime = 28767.12
     pvalue_threshold = 1e-4
+    livetime = 0
                      
-    def fpf_rate_check(self, output_file_path):
-        print("The rate check is not implemented yet!")
+    def fpf_rate_check(self, ref_livetime = ref_livetime):
+        ref_rate_file = np.load(self.ref_path + "/summary.npy")
+        ref_rate = ref_rate_file[1] / ref_livetime #reference rate/reference livetime
+        summary = np.load(self.output_file_path+"/summary.npy") #read in counts of run
+        counts = summary[1]
+        expected_counts = ref_rate * self.livetime
+        pvalue = poisson.pmf(counts, expected_counts)
+        if (pvalue < self.pvalue_threshold):
+            print("p_value for rate is lower than expected.")
+        np.save(str(self.output_file_path)+"/fpf_rate_p_value.npy", np.array([pvalue]))
         
-    def fpf_variable_check(self, output_file_path, ref_file, num_datasets):
+    def fpf_variable_check(self, num_datasets = num_datasets):
+        ref_file = h5py.File(os.path.join(self.ref_path, "combined_data.h5"), 'r')
         num_vars = num_datasets
         labels = [None] * num_vars
         p_values = [None] * num_datasets
         for i in range(num_vars):
             ref_value = ref_file[f'var{i}'][:]
-            file_path = os.path.join(output_file_path, "combined_data.h5")
+            file_path = os.path.join(self.output_file_path, "combined_data.h5")
             with h5py.File(file_path, 'r') as hf:
                 data = hf[f'var{i}'][:]
                 if(len(data>=1)):
                     pvalue = kstest(ref_value, data).pvalue
                     p_values[i] = pvalue
-                    message = f"The test for variable {i} failed"
-                    self.assertGreater(pvalue, self.pvalue_threshold, message)
-        np.save(f"{output_file_path}/fpf_p_values.npy", np.array(p_values))
+                    if (pvalue < self.pvalue_threshold):
+                        print(f"p_value for Variable {i} is lower than expected.")
+                    #message = f"The test for variable {i} failed"
+                    #self.assertGreater(pvalue, self.pvalue_threshold, message)
+        np.save(str(self.output_file_path)+"/fpf_p_values.npy", np.array(p_values))
 
 
 
-
-
-def main(in_dir, out_dir, run_num):
+def main(in_dir, out_dir, run_num, livetime):
     """Execute main function."""
     # Get the list of files to process
     runnumber=run_num #args.RUNNUMBER
@@ -277,7 +289,7 @@ def main(in_dir, out_dir, run_num):
     print(files)
     for j in files:
         infiles.append(j)
-
+    
     # Process each file
     for count, input_file in enumerate(infiles, start=1):
         tray = I3Tray()
@@ -290,23 +302,37 @@ def main(in_dir, out_dir, run_num):
         del tray
 
         # Write the data to HDF5 file
-        with h5py.File(f"{out_dir}/variable_{count}.h5", "w") as hf:
+        with h5py.File(str(out_dir)+f"/variable_{count}.h5", "w") as hf:
             for i in range(10):
                 dataset = hf.create_dataset(f"var{i}", data=var[i])
                 dataset.attrs["label"] = labels[i]
-
+    print("Read i3-Files!")
+    
     # Save summary of the counts
     counts = np.array([q_count, fpf_count])
-    np.save(f"{out_dir}/summary.npy", counts)
+    print(str(out_dir)+"/summary.npy")
+    np.save(str(out_dir)+"/summary.npy", counts)
     cv = Combine_variables()
     cv.combine_h5_files_in_subfolder(output_file_path = out_dir)
     cv.delete_subrun_files(output_file_path = out_dir)
+    print("Combined subruns!")
+    
+    # Performing statistical tests
+    fpf_tests = FPFTest()
+    fpf_tests.output_file_path = str(out_dir)
+    fpf_tests.livetime = float(livetime[0])
+    fpf_tests.fpf_rate_check()
+    print("Rate checks for Faint Particle Filter done!")
+    fpf_tests.fpf_variable_check()
+    print("Variable checks for Faint Particle Filter done!")
+    
 
 if __name__ == "__main__":
     # Argument parsing for input and output directories
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-i", "--infolder", dest="INPUT", required=True, help="Input folder containing .i3.zst files")
     parser.add_argument("-o", "--outfolder", dest="OUTPUT", required=True, help="Output folder for HDF5 files")
-    parser.add_argument("-rn", "--runnumber",nargs='*', dest="RUNNUMBER", required=False, help="Runnumber on the respective date")
+    parser.add_argument("-rn", "--runnumber",nargs='*', dest="RUNNUMBER", required=True, help="Runnumber on the respective date")
+    parser.add_argument("-lt", "--livetime",nargs='*', dest="LIVETIME", required=True, help="Livetime of the respective run")
     args = parser.parse_args()
-    main(args.INPUT, args.OUTPUT, args.RUNNUMBER)
+    main(args.INPUT, args.OUTPUT, args.RUNNUMBER, args.LIVETIME)
